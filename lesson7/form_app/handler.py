@@ -133,40 +133,43 @@ class HTTPHandler(BaseHTTPRequestHandler):
             cls.routes["POST"].append((pattern, handler))
             return func
         return decorator
-
+    
     def serve_static(self):
+        static_dir = os.path.join(os.path.dirname(__file__), "static")
+        
+        requested_path = self.path[len('/static/'):]
+        normalized_path = os.path.normpath(requested_path)
 
-        static_dir = os.path.join(os.path.dirname(__file__), "static") 
-        
-        relative_path = os.path.relpath(self.path, '/static/')
-        
-        file_path = os.path.join(static_dir, relative_path)
-        
-        if not os.path.isfile(file_path):
-            self.send_error(404, explain=f"File not found: {file_path}")
+        # Удаляем ведущие слеши
+        normalized_path = normalized_path.lstrip(os.sep)
+        file_path = os.path.join(static_dir, normalized_path)
+
+        # Проверяем, что файл находится в директории static (избегаем выхода выше)
+        if not file_path.startswith(static_dir):
+            self.send_error(403, explain="Forbidden: Access outside static directory denied")
             return
 
+        if not os.path.isfile(file_path):
+            self.send_error(404, explain=f"File not found")
+            return
+
+        # Читаем и отдаем файл дальше
         try:
             with open(file_path, 'rb') as f:
                 content = f.read()
-            
             content_type, _ = mimetypes.guess_type(file_path)
-            
             self.send_response(200)
             self.send_header('Content-Type', content_type or 'application/octet-stream')
             self.send_header('Content-Length', str(len(content)))
             self.end_headers()
             self.wfile.write(content)
-
-        except PermissionError:
-            self.send_error(403, explain="Access denied")
-        except IOError:
-            self.send_error(500, explain="Error reading file")
+        except Exception as e:
+            self.send_error(500, explain="Error reading static file")
 
     def do_GET(self):
         try:
             if self.path.startswith("/static/"):
-                return self.serve_static()  
+                return self.serve_static()
 
             for pattern, handler in self.routes["GET"]:
                 m = pattern.match(self.path)
@@ -208,10 +211,20 @@ class HTTPHandler(BaseHTTPRequestHandler):
 
 @HTTPHandler.get("/")
 def root(request: Request) -> Response:
-    """Главная страница"""
-    headers = {"Content-Type": "text/html"}
     cookies = SimpleCookie()
 
+    # Получаем CSRF токен из куки или генерируем новый
+    csrf_token = None
+    if "csrf_token" in request.cookies:
+        csrf_token = request.cookies["csrf_token"].value
+    else:
+        csrf_token = generate_csrf_token()
+        cookies["csrf_token"] = csrf_token
+        cookies["csrf_token"]["httponly"] = True
+        cookies["csrf_token"]["samesite"] = "Strict"
+        cookies["csrf_token"]["path"] = "/"
+
+    # При переносе ошибок и данных из куков очищаем их из ответа
     for name in request.cookies:
         if name.endswith("_err") or name == "success":
             cookies[name] = request.cookies[name]
@@ -222,21 +235,38 @@ def root(request: Request) -> Response:
         data[name] = unquote(request.cookies[name].value)
     data["prog_languages"] = data.get("prog_languages", "").split("|")
 
+    data["csrf_token"] = csrf_token  # передаем токен в шаблон
+
     content = env.get_template("index.html").render(**data)
     return Response(
-        status=200, headers=headers, cookies=cookies, content=content
+        status=200,
+        headers={"Content-Type": "text/html"},
+        cookies=cookies,
+        content=content
     )
 
 @HTTPHandler.post("/submit", urlencoded=True)
 def form(request: Request, content: dict) -> Response:
     cookies = SimpleCookie()
 
+    # Проверка CSRF токена
+    csrf_cookie = request.cookies.get("csrf_token")
+    form_token = content.get("csrf_token")
+    if not csrf_cookie or not form_token or csrf_cookie.value != form_token:
+        cookies["csrf_err"] = quote("Invalid CSRF token.")
+        return Response(
+            status=403,
+            headers={"Location": "/"},
+            cookies=cookies,
+            content="CSRF token validation failed"
+        )
+
     try:
         form_data = UserFormModel(**content)
     except ValidationError as e:
         for err in e.errors():
             location, msg = err["loc"][0], err["msg"]
-            
+
             if msg.startswith("Value error, "):
                 msg = msg[len("Value error, "):]
             elif "at most 500 characters" in msg:
@@ -245,10 +275,9 @@ def form(request: Request, content: dict) -> Response:
                 msg = "Электронная почта имеет неверный формат"
             elif "invalid datetime format" in msg or "Invalid date format" in msg:
                 msg = "Некорректная дата рождения"
-            
+
             cookies[f"{location}_err"] = quote(msg.capitalize())
 
-        # Сохраняем введённые данные
         for field in UserFormModel.model_fields:
             value = content.get(field, "")
             if isinstance(value, list):
@@ -359,7 +388,6 @@ def edit_form(request: Request) -> Response:
         )
 
     login = sessions[session_cookie.value]
-
     user = find_user_by_login(login)
     if not user:
         del sessions[session_cookie.value]
@@ -367,13 +395,21 @@ def edit_form(request: Request) -> Response:
             status=303, headers={"Location": "/login"}, cookies=cookies, content=""
         )
 
-    # Проверяем, есть ли ошибки валидации
+    # Получаем или создаём CSRF токен
+    csrf_token = None
+    if "csrf_token" in request.cookies:
+        csrf_token = request.cookies["csrf_token"].value
+    else:
+        csrf_token = generate_csrf_token()
+        cookies["csrf_token"] = csrf_token
+        cookies["csrf_token"]["httponly"] = True
+        cookies["csrf_token"]["samesite"] = "Strict"
+        cookies["csrf_token"]["path"] = "/"
+
+    # Проверяем ошибки валидации в куках
     has_validation_errors = any(name.endswith("_err") for name in request.cookies)
 
-    # Формируем данные для отображения
     data = {}
-
-    # Если есть ошибки валидации, используем данные из кук
     if has_validation_errors:
         for field in UserFormModel.model_fields:
             cookie_val = request.cookies.get(field)
@@ -385,12 +421,9 @@ def edit_form(request: Request) -> Response:
                     data[field] = unquote(cookie_val.value)
             else:
                 data[field] = ""
-
-        # Проверяем, есть ли поле phone, если нет, берем из phone_number
         if 'phone' not in data or not data['phone']:
             data['phone'] = user.get('phone_number', '')
     else:
-        # Если ошибок нет, берем данные из БД
         data = {
             'full_name': user.get('full_name', ''),
             'phone': user.get('phone_number', ''),
@@ -401,7 +434,6 @@ def edit_form(request: Request) -> Response:
             'prog_languages': user.get('prog_languages', [])
         }
 
-    # Обрабатываем ошибки из кук
     errors = {}
     for name in request.cookies:
         if name.endswith("_err"):
@@ -413,8 +445,6 @@ def edit_form(request: Request) -> Response:
     if success_edit:
         cookies["success_edit"] = ""
         cookies["success_edit"]["expires"] = EPOCH
-
-        # При успешном редактировании очищаем все куки с данными формы
         if not has_validation_errors:
             for field in UserFormModel.model_fields:
                 if field in request.cookies:
@@ -423,6 +453,7 @@ def edit_form(request: Request) -> Response:
 
     context = data.copy()
     context.update(errors)
+    context["csrf_token"] = csrf_token  # Передаём токен в шаблон
     context["success_edit"] = bool(success_edit)
 
     content = env.get_template("edit.html").render(**context)
@@ -444,6 +475,18 @@ def edit_post(request: Request, content: dict) -> Response:
             status=303, headers={"Location": "/login"}, cookies=cookies, content=""
         )
 
+    # Проверка CSRF токена
+    csrf_cookie = request.cookies.get("csrf_token")
+    form_token = content.get("csrf_token")
+    if not csrf_cookie or not form_token or csrf_cookie.value != form_token:
+        cookies["csrf_err"] = quote("Invalid CSRF token.")
+        return Response(
+            status=403,
+            headers={"Location": "/edit"},
+            cookies=cookies,
+            content="CSRF token validation failed"
+        )
+
     login = sessions[session_cookie.value]
 
     try:
@@ -452,7 +495,6 @@ def edit_post(request: Request, content: dict) -> Response:
         for err in e.errors():
             location, msg = err["loc"][0], err["msg"]
 
-            # Обработка различных форматов ошибок от Pydantic
             if msg.startswith("Value error, "):
                 msg = msg[len("Value error, "):]
             elif "at most 500 characters" in msg:
@@ -464,7 +506,6 @@ def edit_post(request: Request, content: dict) -> Response:
 
             cookies[f"{location}_err"] = quote(msg.capitalize())
 
-        # Сохраняем введённые данные
         for field in UserFormModel.model_fields:
             value = content.get(field, "")
             if isinstance(value, list):
@@ -475,17 +516,14 @@ def edit_post(request: Request, content: dict) -> Response:
             status=303, headers={"Location": "/edit"}, cookies=cookies, content=""
         )
 
-    # Обновляем данные пользователя в БД
     update_user_data(login, form_data)
 
-    # Очищаем все куки с данными формы при успешном обновлении
     for field in UserFormModel.model_fields:
         cookies[field] = ""
         cookies[field]["expires"] = EPOCH
         cookies[f"{field}_err"] = ""
         cookies[f"{field}_err"]["expires"] = EPOCH
 
-    # Устанавливаем флаг успешного обновления
     cookies["success_edit"] = "1"
     cookies["success_edit"]["expires"] = formatdate(
         (datetime.now() + timedelta(days=1)).timestamp(), usegmt=True
