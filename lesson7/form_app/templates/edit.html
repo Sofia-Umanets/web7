@@ -43,6 +43,7 @@
         {% endif %}
 
         <form action="/edit" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <div class="form-group mb-3">
             <label for="full_name">ФИО:</label>
             <input
