@@ -572,19 +572,16 @@ def admin_edit_form(request: Request, form_id: int) -> Response:
     if not session_cookie or session_cookie.value not in admin_sessions:
         return Response(303, {"Location": "/admin"}, cookies, "")
 
-    # Получаем форму из БД
     user_form = get_user_form_by_id(form_id)
     if not user_form:
         return Response(404, {"Content-Type": "text/html"}, cookies, "Форма не найдена")
 
-    # Генерируем CSRF токен
     csrf_token = secrets.token_hex(16)
     cookies["admin_csrf_token"] = csrf_token
     cookies["admin_csrf_token"]["path"] = "/"
     cookies["admin_csrf_token"]["httponly"] = True
     cookies["admin_csrf_token"]["samesite"] = "Strict"
 
-    # Собираем данные и ошибки
     data = {}
     for field in UserFormModel.model_fields:
         if field == "prog_languages":
@@ -594,7 +591,6 @@ def admin_edit_form(request: Request, form_id: int) -> Response:
     if not data.get("phone"):
         data["phone"] = user_form.get("phone_number", "")
 
-    # Обрабатываем ошибки из кук
     errors = {}
     for name, morsel in request.cookies.items():
         if name.endswith("_err"):
@@ -602,7 +598,6 @@ def admin_edit_form(request: Request, form_id: int) -> Response:
             cookies[name] = ""
             cookies[name]["expires"] = EPOCH
 
-    # Если есть ошибки валидации, восстанавливаем данные из кук
     if errors:
         for field in UserFormModel.model_fields:
             cookie_val = request.cookies.get(field)
@@ -611,19 +606,23 @@ def admin_edit_form(request: Request, form_id: int) -> Response:
                     data[field] = unquote(cookie_val.value).split("|") if cookie_val.value else []
                 else:
                     data[field] = unquote(cookie_val.value)
-
-    # Если нет ошибок валидации, очищаем куки с данными формы
     else:
         for field in UserFormModel.model_fields:
             if field in request.cookies:
                 cookies[field] = ""
                 cookies[field]["expires"] = EPOCH
 
-    # Объединяем
+    success_edit = False
+    if "success_edit" in request.cookies:
+        success_edit = True
+        cookies["success_edit"] = ""
+        cookies["success_edit"]["expires"] = EPOCH
+
     context = data.copy()
     context.update(errors)
     context["csrf_token"] = csrf_token
     context["form_id"] = form_id
+    context["success_edit"] = success_edit 
 
     content = env.get_template("admin_edit_form.html").render(**context)
     return Response(200, {"Content-Type": "text/html"}, cookies, content)
