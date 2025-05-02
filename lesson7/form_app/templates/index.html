@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Форма</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet" crossorigin="anonymous" />
+    <link rel="stylesheet" href="../static/style.css">
+</head>
+<body class="d-flex flex-column min-vh-100">
+    <header class="bg-custom position-relative">
+        <div class="container">
+            <h1 class="text-center text-white py-3">Форма</h1>
+        </div>
+        <a href="/login" class="btn btn-secondary btn-lg position-absolute top-0 end-0 m-3 fs-4 px-4 py-3">Перейти к входу</a>
+    </header>
+
+    <main class="container my-4">
+        <section id="form">
+            <h2 class="mb-4">Заполните форму</h2>
+            {% if full_name_err or phone_err or email_err or birth_date_err or gender_err or prog_languages_err or bio_err %}
+            <div class="alert alert-danger" role="alert">
+                <strong>Ошибки в форме:</strong>
+                <ul>
+                    {% if full_name_err %}<li>{{ full_name_err }}</li>{% endif %}
+                    {% if phone_err %}<li>{{ phone_err }}</li>{% endif %}
+                    {% if email_err %}<li>{{ email_err }}</li>{% endif %}
+                    {% if birth_date_err %}<li>{{ birth_date_err }}</li>{% endif %}
+                    {% if gender_err %}<li>{{ gender_err }}</li>{% endif %}
+                    {% if prog_languages_err %}<li>{{ prog_languages_err }}</li>{% endif %}
+                    {% if bio_err %}<li>{{ bio_err }}</li>{% endif %}
+                </ul>
+            </div>
+            {% endif %}
+            <form action="/submit" method="post">
+                <div class="form-group mb-3">
+                    <label for="full_name">ФИО:</label>
+                    <input type="text" id="full_name" name="full_name" class="form-control {% if full_name_err %}is-invalid{% endif %}" required
+                           placeholder="Иванов Иван Иванович" value="{{ full_name }}">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label for="phone">Телефон:</label>
+                    <input type="tel" id="phone" name="phone" class="form-control {% if phone_err %}is-invalid{% endif %}" required
+                           placeholder="+7 (XXX) XXX-XX-XX" value="{{ phone }}">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label for="email">E-mail:</label>
+                    <input type="email" id="email" name="email" class="form-control {% if email_err %}is-invalid{% endif %}" required
+                           placeholder="example@mail.com" value="{{ email }}">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label for="birth_date">Дата рождения:</label>
+                    <input type="date" id="birth_date" name="birth_date" class="form-control {% if birth_date_err %}is-invalid{% endif %}" required
+                           value="{{ birth_date }}">
+                </div>
+
+                <div class="form-group mb-3">
+                    <label>Пол:</label>
+                    <div class="form-check">
+                        <input type="radio" id="male" name="gender" value="male" class="form-check-input {% if gender_err %}is-invalid{% endif %}" required {% if gender == 'male' %}checked{% endif %}>
+                        <label for="male" class="form-check-label">Мужской</label>
+                    </div>
+                    <div class="form-check">
+                        <input type="radio" id="female" name="gender" value="female" class="form-check-input {% if gender_err %}is-invalid{% endif %}" {% if gender == 'female' %}checked{% endif %}>
+                        <label for="female" class="form-check-label">Женский</label>
+                    </div>
+                </div>
+
+                <div class="form-group mb-3">
+                    <label for="prog_languages">Любимый язык программирования:</label>
+                    <select id="prog_languages" name="prog_languages[]" class="form-control {% if prog_languages_err %}is-invalid{% endif %}" multiple required>
+                        <option value="Pascal" {% if "Pascal" in prog_languages %}selected{% endif %}>Pascal</option>
+                        <option value="C" {% if "C" in prog_languages %}selected{% endif %}>C</option>
+                        <option value="C++" {% if "C++" in prog_languages %}selected{% endif %}>C++</option>
+                        <option value="JavaScript" {% if "JavaScript" in prog_languages %}selected{% endif %}>JavaScript</option>
+                        <option value="PHP" {% if "PHP" in prog_languages %}selected{% endif %}>PHP</option>
+                        <option value="Python" {% if "Python" in prog_languages %}selected{% endif %}>Python</option>
+                        <option value="Java" {% if "Java" in prog_languages %}selected{% endif %}>Java</option>
+                        <option value="Haskell" {% if "Haskell" in prog_languages %}selected{% endif %}>Haskell</option>
+                        <option value="Clojure" {% if "Clojure" in prog_languages %}selected{% endif %}>Clojure</option>
+                        <option value="Prolog" {% if "Prolog" in prog_languages %}selected{% endif %}>Prolog</option>
+                        <option value="Scala" {% if "Scala" in prog_languages %}selected{% endif %}>Scala</option>
+                        <option value="Go" {% if "Go" in prog_languages %}selected{% endif %}>Go</option>
+                    </select>
+                </div>
+
+                <div class="form-group mb-3">
+                    <label for="bio">Биография:</label>
+                    <textarea id="bio" name="bio" rows="5" class="form-control {% if bio_err %}is-invalid{% endif %}" required>{{ bio }}</textarea>
+                </div>
+
+                <div class="form-group form-check mb-4">
+                    <input type="checkbox" id="contract_agreed" name="contract_agreed" class="form-check-input" value="1" {% if contract_agreed == '1' %}checked{% endif %}>
+                    <label for="contract_agreed">С контрактом ознакомлен(а)</label>
+                </div>
+                <div class="text-center mt-4">
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <footer class="bg-custom mt-auto">
+        <div class="container">
+            <p class="m-0 text-white py-3">© Уманец Софья</p>
+        </div>
+    </footer>
+</body>
+</html>

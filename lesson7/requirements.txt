@@ -1,0 +1,14 @@
+annotated-types==0.7.0
+dnspython==2.7.0
+python-dotenv==1.0.1
+email-validator==2.2.0
+idna==3.10
+Jinja2==3.1.6
+MarkupSafe==3.0.2
+mysql-connector-python==9.2.0
+phonenumbers==9.0.0
+pydantic==2.10.6
+pydantic-core==2.27.2
+pydantic-extra-types==2.10.2
+typing-extensions==4.12.2
+

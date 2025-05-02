@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Успешная отправка</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="../static/style.css" />
+</head>
+<body class="d-flex flex-column min-vh-100">
+<header class="bg-custom">
+    <div class="container">
+        <h1 class="text-center text-white py-3">Форма</h1>
+    </div>
+</header>
+
+<main class="container my-5 text-center">
+    <div class="success-icon">
+        <i class="fas fa-check-circle" style="font-size: 72px; color: #28a745;"></i>
+    </div>
+    <h2 class="mb-4">Данные успешно сохранены!</h2>
+    <p>Спасибо за ваше обращение.</p>
+
+    {% if login and password %}
+    <div class="alert alert-info mt-4" style="max-width: 500px; margin: 0 auto; text-align: left;">
+        <h5>Ваши данные для входа:</h5>
+        <p><strong>Логин:</strong> {{ login }}</p>
+        <p><strong>Пароль:</strong> {{ password }}</p>
+        <p class="mb-0">Пожалуйста, сохраните эти данные для последующего входа и редактирования информации.</p>
+    </div>
+
+    <p class="mt-4">
+        Чтобы изменить ваши данные, <a href="/login">перейдите на страницу входа</a> и авторизуйтесь.
+    </p>
+    <a href="/login" class="btn btn-secondary mt-3">Перейти к входу</a>
+    {% endif %}
+
+    <a href="/" class="btn btn-primary mt-3">Вернуться на главную</a>
+</main>
+
+<footer class="bg-custom mt-auto">
+    <div class="container">
+        <p class="m-0 text-white py-3">Уманец Софья</p>
+    </div>
+</footer>
+
+<script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+
+</body>
+</html>
