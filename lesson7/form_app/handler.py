@@ -367,21 +367,41 @@ def edit_form(request: Request) -> Response:
             status=303, headers={"Location": "/login"}, cookies=cookies, content=""
         )
 
-    # Генерируем и устанавливаем новый CSRF токен
-    csrf_token = set_csrf_token(cookies)
+    # Проверяем, есть ли ошибки валидации
+    has_validation_errors = any(name.endswith("_err") for name in request.cookies)
 
-    data = {
-        "csrf_token": csrf_token,
-        "full_name": user.get("full_name", ""),
-        "phone": user.get("phone_number", ""),
-        "email": user.get("email", ""),
-        "birth_date": user.get("birth_date", ""),
-        "gender": user.get("gender", ""),
-        "prog_languages": user.get("prog_languages", []),
-        "bio": user.get("bio", ""),
-    }
+    # Формируем данные для отображения
+    data = {}
 
-    # Обработка ошибок из кук
+    # Если есть ошибки валидации, используем данные из кук
+    if has_validation_errors:
+        for field in UserFormModel.model_fields:
+            cookie_val = request.cookies.get(field)
+            if cookie_val:
+                if field == "prog_languages":
+                    val = unquote(cookie_val.value)
+                    data[field] = val.split("|") if val else []
+                else:
+                    data[field] = unquote(cookie_val.value)
+            else:
+                data[field] = ""
+
+        # Проверяем, есть ли поле phone, если нет, берем из phone_number
+        if 'phone' not in data or not data['phone']:
+            data['phone'] = user.get('phone_number', '')
+    else:
+        # Если ошибок нет, берем данные из БД
+        data = {
+            'full_name': user.get('full_name', ''),
+            'phone': user.get('phone_number', ''),
+            'email': user.get('email', ''),
+            'birth_date': user.get('birth_date', ''),
+            'gender': user.get('gender', ''),
+            'bio': user.get('bio', ''),
+            'prog_languages': user.get('prog_languages', [])
+        }
+
+    # Обрабатываем ошибки из кук
     errors = {}
     for name in request.cookies:
         if name.endswith("_err"):
@@ -394,11 +414,12 @@ def edit_form(request: Request) -> Response:
         cookies["success_edit"] = ""
         cookies["success_edit"]["expires"] = EPOCH
 
-        # Очищаем куки с данными формы при успешном редактировании
-        for field in UserFormModel.model_fields:
-            if field in request.cookies:
-                cookies[field] = ""
-                cookies[field]["expires"] = EPOCH
+        # При успешном редактировании очищаем все куки с данными формы
+        if not has_validation_errors:
+            for field in UserFormModel.model_fields:
+                if field in request.cookies:
+                    cookies[field] = ""
+                    cookies[field]["expires"] = EPOCH
 
     context = data.copy()
     context.update(errors)
@@ -410,7 +431,7 @@ def edit_form(request: Request) -> Response:
         status=200,
         headers={"Content-Type": "text/html"},
         cookies=cookies,
-        content=content
+        content=content,
     )
 
 @HTTPHandler.post("/edit", urlencoded=True)
@@ -423,15 +444,6 @@ def edit_post(request: Request, content: dict) -> Response:
             status=303, headers={"Location": "/login"}, cookies=cookies, content=""
         )
 
-    # Проверка CSRF-токена
-    try:
-        check_csrf_token(request, content)
-    except Exception as e:
-        cookies["edit_err"] = quote(str(e))
-        return Response(
-            status=303, headers={"Location": "/edit"}, cookies=cookies, content=""
-        )
-
     login = sessions[session_cookie.value]
 
     try:
@@ -439,7 +451,8 @@ def edit_post(request: Request, content: dict) -> Response:
     except ValidationError as e:
         for err in e.errors():
             location, msg = err["loc"][0], err["msg"]
-            
+
+            # Обработка различных форматов ошибок от Pydantic
             if msg.startswith("Value error, "):
                 msg = msg[len("Value error, "):]
             elif "at most 500 characters" in msg:
@@ -448,7 +461,7 @@ def edit_post(request: Request, content: dict) -> Response:
                 msg = "Электронная почта имеет неверный формат"
             elif "invalid datetime format" in msg or "Invalid date format" in msg:
                 msg = "Некорректная дата рождения"
-            
+
             cookies[f"{location}_err"] = quote(msg.capitalize())
 
         # Сохраняем введённые данные
@@ -458,24 +471,14 @@ def edit_post(request: Request, content: dict) -> Response:
                 value = "|".join(value)
             cookies[field] = quote(value)
 
-        # Генерируем новый CSRF токен для следующей попытки
-        set_csrf_token(cookies)
-
         return Response(
             status=303, headers={"Location": "/edit"}, cookies=cookies, content=""
         )
 
     # Обновляем данные пользователя в БД
-    try:
-        update_user_data(login, form_data)
-    except Exception as e:
-        cookies["edit_err"] = quote(f"Ошибка сохранения данных: {str(e)}")
-        set_csrf_token(cookies)
-        return Response(
-            status=303, headers={"Location": "/edit"}, cookies=cookies, content=""
-        )
+    update_user_data(login, form_data)
 
-    # Очищаем куки с данными формы при успешном обновлении
+    # Очищаем все куки с данными формы при успешном обновлении
     for field in UserFormModel.model_fields:
         cookies[field] = ""
         cookies[field]["expires"] = EPOCH
@@ -485,12 +488,8 @@ def edit_post(request: Request, content: dict) -> Response:
     # Устанавливаем флаг успешного обновления
     cookies["success_edit"] = "1"
     cookies["success_edit"]["expires"] = formatdate(
-        (datetime.now() + timedelta(days=1)).timestamp(), 
-        usegmt=True
+        (datetime.now() + timedelta(days=1)).timestamp(), usegmt=True
     )
-
-    # Генерируем новый CSRF токен для следующего использования
-    set_csrf_token(cookies)
 
     return Response(
         status=303, headers={"Location": "/edit"}, cookies=cookies, content=""
@@ -595,12 +594,20 @@ def admin_edit_form(request: Request, form_id: int) -> Response:
     if not data.get("phone"):
         data["phone"] = user_form.get("phone_number", "")
 
+    # Обрабатываем ошибки из кук
     errors = {}
     for name, morsel in request.cookies.items():
         if name.endswith("_err"):
             errors[name] = unquote(morsel.value)
             cookies[name] = ""
             cookies[name]["expires"] = EPOCH
+
+    # Если нет ошибок валидации, очищаем куки с данными формы
+    if not errors:
+        for field in UserFormModel.model_fields:
+            if field in request.cookies:
+                cookies[field] = ""
+                cookies[field]["expires"] = EPOCH
 
     # Объединяем
     context = data.copy()
