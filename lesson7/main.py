@@ -9,7 +9,7 @@ def main():
     port = 8080
 
     httpd = HTTPServer((host, port), HTTPHandler)
-    print(f"Сервер запущен на http://{host}:{port}")
+    print(f"Сервер запущен на https://{host}:{port}")
     httpd.serve_forever()
 
 
