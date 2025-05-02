@@ -602,8 +602,18 @@ def admin_edit_form(request: Request, form_id: int) -> Response:
             cookies[name] = ""
             cookies[name]["expires"] = EPOCH
 
+    # Если есть ошибки валидации, восстанавливаем данные из кук
+    if errors:
+        for field in UserFormModel.model_fields:
+            cookie_val = request.cookies.get(field)
+            if cookie_val:
+                if field == "prog_languages":
+                    data[field] = unquote(cookie_val.value).split("|") if cookie_val.value else []
+                else:
+                    data[field] = unquote(cookie_val.value)
+
     # Если нет ошибок валидации, очищаем куки с данными формы
-    if not errors:
+    else:
         for field in UserFormModel.model_fields:
             if field in request.cookies:
                 cookies[field] = ""
