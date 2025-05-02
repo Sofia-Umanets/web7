@@ -35,6 +35,7 @@
             </div>
             {% endif %}
             <form action="/submit" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <div class="form-group mb-3">
                     <label for="full_name">ФИО:</label>
                     <input type="text" id="full_name" name="full_name" class="form-control {% if full_name_err %}is-invalid{% endif %}" required
